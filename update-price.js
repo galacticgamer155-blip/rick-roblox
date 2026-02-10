@@ -1,60 +1,61 @@
-// update-price.js
 import fetch from "node-fetch";
 
-// =====================
-//  ⚡ CONFIG
-// =====================
-const API_KEY = process.env.ROBLOX_API_KEY; // store your key in GitHub secret or local env
-const UNIVERSE_ID = "5953980111";
+// --- CONFIG ---
+const API_KEY = process.env.ROBLOX_API_KEY;  // GitHub secret
+const UNIVERSE_ID = 5953980111;             // Your universe ID
 const DATASTORE_NAME = "GlobalRBLXPrices_v2";
 
-// Example price data
-const price = 73.45;
-const now = new Date();
-const timestamp = Math.floor(now.getTime() / 1000);
-
-// =====================
-//  ⚡ PAYLOAD
-// =====================
-const body = {
-  datastoreName: DATASTORE_NAME,
-  entry: {
-    value: timestamp,
-    metadata: {
-      date: now.toISOString(),
-      price: price
-    }
-  }
-};
-
-// =====================
-//  ⚡ POST TO OPEN CLOUD
-// =====================
-async function postPrice() {
-  try {
-    const res = await fetch(
-      `https://apis.roblox.com/datastores/v1/universes/${UNIVERSE_ID}/standard-datastores/ordered/entries`,
-      {
-        method: "POST",
-        headers: {
-          "x-api-key": API_KEY,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(body)
-      }
-    );
-
-    const text = await res.text();
-    if (!res.ok) {
-      console.error("Failed to save OrderedDataStore:", res.status, text);
-      return;
-    }
-
-    console.log("Success! Response:", text);
-  } catch (err) {
-    console.error("Error posting price:", err);
-  }
+// Example price fetch — replace with Alpha Vantage API
+async function getLatestPrice() {
+    // Fake price for demo
+    return {
+        date: new Date().toISOString().slice(0, 19).replace("T", " "),
+        price: Math.random() * 100
+    };
 }
 
-// Run it
-postPrice();
+// Save to Roblox Open Cloud OrderedDataStore
+async function savePrice(entry) {
+    const url = `https://apis.roblox.com/datastores/v1/universes/${UNIVERSE_ID}/standard-datastores/ordered/entries`;
+
+    const payload = {
+        datastoreName: DATASTORE_NAME,
+        entry: {
+            value: Date.now(),      // timestamp as value
+            metadata: entry
+        }
+    };
+
+    try {
+        const res = await fetch(url, {
+            method: "POST",
+            headers: {
+                "x-api-key": API_KEY,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+        console.log("Roblox API response:", data);
+
+        if (!res.ok) {
+            throw new Error(`Failed to save: ${res.status} ${JSON.stringify(data)}`);
+        }
+
+        console.log("✅ Price saved:", entry);
+    } catch (err) {
+        console.error("❌ Error saving price:", err);
+        process.exit(1); // fail workflow if error
+    }
+}
+
+async function main() {
+    console.log("Fetching latest price...");
+    const latestPrice = await getLatestPrice();
+    console.log("Fetched price:", latestPrice);
+
+    await savePrice(latestPrice);
+}
+
+main();
