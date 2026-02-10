@@ -2,21 +2,25 @@ name: Update RBLX Price
 
 on:
   schedule:
-    - cron: '0 0 * * *' # every midnight
-  workflow_dispatch:
+    - cron: '0 0 * * *'   # every day at midnight UTC
+  workflow_dispatch:       # allow manual run
 
 jobs:
   update:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
       - name: Setup Node
         uses: actions/setup-node@v3
         with:
-          node-version: "20"
+          node-version: 20
+
       - name: Install dependencies
         run: npm install node-fetch@3
-      - name: Run price update
+
+      - name: Run price updater
+        run: node update-price.js
         env:
           ROBLOX_API_KEY: ${{ secrets.ROBLOX_API_KEY }}
-        run: node update-price.js
