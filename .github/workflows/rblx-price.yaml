@@ -10,13 +10,15 @@ jobs:
     runs-on: ubuntu-latest
     env:
       ROBLOX_API_KEY: ${{ secrets.ROBLOX_API_KEY }}
-      UNIVERSE_ID: ${{ secrets.UNIVERSE_ID }}
       ALPHA_KEY: ${{ secrets.ALPHA_KEY }}
+      UNIVERSE_ID: 17397537538
       ORDERED_STORE_NAME: "GlobalRBLXPrices_v2"
     steps:
       - name: Fetch & save RBLX price
         run: |
           node << 'EOF'
+          import fetch from "node-fetch";
+
           async function run() {
             try {
               // 1️⃣ Fetch price from Alpha Vantage
@@ -24,7 +26,6 @@ jobs:
               const apiUrl = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${SYMBOL}&apikey=${process.env.ALPHA_KEY}`;
               const res = await fetch(apiUrl);
               const json = await res.json();
-              console.log("Alpha Vantage response:", JSON.stringify(json));
 
               if (!json["Global Quote"] || !json["Global Quote"]["05. price"]) {
                 throw new Error("Alpha Vantage returned no price");
@@ -34,7 +35,7 @@ jobs:
               const today = new Date().toISOString().split("T")[0];
               const timestamp = Math.floor(Date.now() / 1000);
 
-              console.log(`Fetched price ${price} for ${today}`);
+              console.log(`Fetched price: ${price} for ${today}`);
 
               // 2️⃣ Post to Roblox OrderedDataStore
               const url = `https://apis.roblox.com/datastores/v1/universes/${process.env.UNIVERSE_ID}/standard-datastores/ordered/entries`;
@@ -42,10 +43,7 @@ jobs:
                 datastoreName: process.env.ORDERED_STORE_NAME,
                 entry: {
                   value: timestamp,
-                  metadata: {
-                    date: `${today} 00:00:00`,
-                    price: price
-                  }
+                  metadata: { date: `${today} 00:00:00`, price }
                 }
               };
 
@@ -63,9 +61,9 @@ jobs:
                 throw new Error(`Failed to save OrderedDataStore. Status: ${saveRes.status}, Body: ${text}`);
               }
 
-              console.log("Price saved successfully!");
+              console.log("✅ Price saved successfully!");
             } catch (err) {
-              console.error("ERROR:", err);
+              console.error("❌ ERROR:", err);
               process.exit(1);
             }
           }
