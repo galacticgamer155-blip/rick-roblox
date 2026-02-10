@@ -2,71 +2,21 @@ name: Update RBLX Price
 
 on:
   schedule:
-    - cron: "0 0 * * *" # daily at midnight UTC
+    - cron: '0 0 * * *' # every midnight
   workflow_dispatch:
 
 jobs:
-  update-price:
+  update:
     runs-on: ubuntu-latest
-    env:
-      ROBLOX_API_KEY: ${{ secrets.ROBLOX_API_KEY }}
-      ALPHA_KEY: ${{ secrets.ALPHA_KEY }}
-      UNIVERSE_ID: 17397537538
-      ORDERED_STORE_NAME: "GlobalRBLXPrices_v2"
     steps:
       - uses: actions/checkout@v3
-
+      - name: Setup Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: "20"
+      - name: Install dependencies
+        run: npm install node-fetch@3
       - name: Run price update
-        run: |
-          node << 'EOF'
-          async function run() {
-            try {
-              // 1️⃣ Fetch price from Alpha Vantage
-              const SYMBOL = "RBLX";
-              const apiUrl = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${SYMBOL}&apikey=${process.env.ALPHA_KEY}`;
-              const res = await fetch(apiUrl);
-              const json = await res.json();
-
-              if (!json["Global Quote"] || !json["Global Quote"]["05. price"]) {
-                throw new Error("Alpha Vantage returned no price");
-              }
-
-              const price = Number(json["Global Quote"]["05. price"]);
-              const today = new Date().toISOString().split("T")[0];
-              const timestamp = Math.floor(Date.now() / 1000);
-
-              console.log(`Fetched price: ${price} for ${today}`);
-
-              // 2️⃣ Post to Roblox OrderedDataStore
-              const url = `https://apis.roblox.com/datastores/v1/universes/${process.env.UNIVERSE_ID}/standard-datastores/ordered/entries`;
-              const body = {
-                datastoreName: process.env.ORDERED_STORE_NAME,
-                entry: {
-                  value: timestamp,
-                  metadata: { date: `${today} 00:00:00`, price }
-                }
-              };
-
-              const saveRes = await fetch(url, {
-                method: "POST",
-                headers: {
-                  "x-api-key": process.env.ROBLOX_API_KEY,
-                  "Content-Type": "application/json"
-                },
-                body: JSON.stringify(body)
-              });
-
-              if (!saveRes.ok) {
-                const text = await saveRes.text();
-                throw new Error(`Failed to save OrderedDataStore. Status: ${saveRes.status}, Body: ${text}`);
-              }
-
-              console.log("✅ Price saved successfully!");
-            } catch (err) {
-              console.error("❌ ERROR:", err);
-              process.exit(1);
-            }
-          }
-
-          run();
-          EOF
+        env:
+          ROBLOX_API_KEY: ${{ secrets.ROBLOX_API_KEY }}
+        run: node update-price.js
