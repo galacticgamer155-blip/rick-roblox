@@ -1,16 +1,15 @@
 name: Update RBLX Price
 
-# Run every day at midnight local time
 on:
   schedule:
-    - cron: "0 0 * * *" # UTC midnight, adjust as needed
+    - cron: "0 0 * * *" # runs daily at midnight UTC (adjust if needed)
   workflow_dispatch: # allows manual run
 
 jobs:
   update-price:
     runs-on: ubuntu-latest
     steps:
-      - name: Fetch & save RBLX price to Roblox
+      - name: Fetch & Save RBLX Price
         env:
           ROBLOX_API_KEY: ${{ secrets.ROBLOX_API_KEY }}
           UNIVERSE_ID: ${{ secrets.UNIVERSE_ID }}
@@ -24,41 +23,67 @@ jobs:
           const ENTRY_KEY = "DATA";
 
           async function run() {
-            // 1️⃣ Fetch price from Alpha Vantage
-            const res = await fetch(`https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${SYMBOL}&apikey=${process.env.ALPHA_KEY}`);
-            const json = await res.json();
-            const price = Number(json["Global Quote"]["05. price"]);
-            if (!price) throw "No price returned";
+            try {
+              // 1️⃣ Fetch price from Alpha Vantage
+              const apiUrl = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${SYMBOL}&apikey=${process.env.ALPHA_KEY}`;
+              console.log("Fetching price from Alpha Vantage...");
+              const res = await fetch(apiUrl);
+              const json = await res.json();
+              console.log("Alpha Vantage response:", JSON.stringify(json));
 
-            // 2️⃣ Load existing DataStore entry
-            const url = `https://apis.roblox.com/datastores/v1/universes/${process.env.UNIVERSE_ID}/standard-datastores/datastore/entries/entry?datastoreName=${DATASTORE}&entryKey=${ENTRY_KEY}`;
-            const headers = { "x-api-key": process.env.ROBLOX_API_KEY };
+              if (!json["Global Quote"] || !json["Global Quote"]["05. price"]) {
+                throw new Error("Alpha Vantage returned no price");
+              }
 
-            let data = { lastDay: null, prices: [] };
-            const getRes = await fetch(url, { headers });
-            if (getRes.ok) data = await getRes.json();
+              const price = Number(json["Global Quote"]["05. price"]);
+              console.log("Fetched price:", price);
 
-            // 3️⃣ Avoid duplicate entry for today
-            const today = new Date().toISOString().split("T")[0];
-            if (data.lastDay === today) return console.log("Already updated today");
+              // 2️⃣ Load existing DataStore entry
+              const url = `https://apis.roblox.com/datastores/v1/universes/${process.env.UNIVERSE_ID}/standard-datastores/datastore/entries/entry?datastoreName=${DATASTORE}&entryKey=${ENTRY_KEY}`;
+              const headers = { "x-api-key": process.env.ROBLOX_API_KEY };
 
-            // 4️⃣ Add today's price
-            data.prices.push({ date: `${today} 00:00:00`, price });
-            data.lastDay = today;
+              let data = { lastDay: null, prices: [] };
+              const getRes = await fetch(url, { headers });
+              if (getRes.ok) {
+                data = await getRes.json();
+                console.log("Existing DataStore entry loaded:", JSON.stringify(data));
+              } else if (getRes.status === 404) {
+                console.log("No existing entry found, creating new one");
+              } else {
+                const text = await getRes.text();
+                throw new Error(`Failed to load DataStore entry. Status: ${getRes.status}, Body: ${text}`);
+              }
 
-            // 5️⃣ Save back to Roblox DataStore
-            const saveRes = await fetch(url, {
-              method: "POST",
-              headers: { ...headers, "Content-Type": "application/json" },
-              body: JSON.stringify(data)
-            });
+              // 3️⃣ Avoid duplicate entry for today
+              const today = new Date().toISOString().split("T")[0];
+              if (data.lastDay === today) {
+                console.log("Already updated today. Skipping...");
+                return;
+              }
 
-            if (!saveRes.ok) throw `Failed to save: ${saveRes.statusText}`;
-            console.log("Price saved:", price);
+              // 4️⃣ Add today's price
+              data.prices.push({ date: `${today} 00:00:00`, price });
+              data.lastDay = today;
+
+              // 5️⃣ Save back to Roblox DataStore
+              const saveRes = await fetch(url, {
+                method: "POST",
+                headers: { ...headers, "Content-Type": "application/json" },
+                body: JSON.stringify(data)
+              });
+
+              if (!saveRes.ok) {
+                const body = await saveRes.text();
+                throw new Error(`Failed to save DataStore. Status: ${saveRes.status}, Body: ${body}`);
+              }
+
+              console.log("Price saved successfully:", price);
+
+            } catch (err) {
+              console.error("ERROR:", err);
+              process.exit(1);
+            }
           }
 
-          run().catch(err => {
-            console.error(err);
-            process.exit(1);
-          });
+          run();
           EOF
