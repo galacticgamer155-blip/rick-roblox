@@ -3,7 +3,7 @@ name: Update RBLX Price
 on:
   schedule:
     - cron: "0 0 * * *" # daily at midnight UTC
-  workflow_dispatch: # manual trigger
+  workflow_dispatch:
 
 jobs:
   update-price:
@@ -12,19 +12,16 @@ jobs:
       ROBLOX_API_KEY: ${{ secrets.ROBLOX_API_KEY }}
       UNIVERSE_ID: ${{ secrets.UNIVERSE_ID }}
       ALPHA_KEY: ${{ secrets.ALPHA_KEY }}
+      ORDERED_STORE_NAME: "GlobalRBLXPrices_v2"
     steps:
       - name: Fetch & save RBLX price
         run: |
           node << 'EOF'
-          const SYMBOL = "RBLX";
-          const DATASTORE = "GlobalRBLXPrices_v2";
-          const ENTRY_KEY = "DATA";
-
           async function run() {
             try {
-              console.log("Fetching price from Alpha Vantage...");
+              // 1️⃣ Fetch price from Alpha Vantage
+              const SYMBOL = "RBLX";
               const apiUrl = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${SYMBOL}&apikey=${process.env.ALPHA_KEY}`;
-              
               const res = await fetch(apiUrl);
               const json = await res.json();
               console.log("Alpha Vantage response:", JSON.stringify(json));
@@ -34,49 +31,39 @@ jobs:
               }
 
               const price = Number(json["Global Quote"]["05. price"]);
-              console.log("Fetched price:", price);
-
-              // Load existing DataStore entry
-              const url = `https://apis.roblox.com/datastores/v1/universes/${process.env.UNIVERSE_ID}/standard-datastores/datastore/entries/entry?datastoreName=${DATASTORE}&entryKey=${ENTRY_KEY}`;
-              const headers = { "x-api-key": process.env.ROBLOX_API_KEY };
-
-              let data = { lastDay: null, prices: [] };
-              const getRes = await fetch(url, { headers });
-
-              if (getRes.ok) {
-                data = await getRes.json();
-                console.log("Loaded existing DataStore entry:", JSON.stringify(data));
-              } else if (getRes.status === 404) {
-                console.log("No existing entry found, creating new one");
-              } else {
-                const text = await getRes.text();
-                throw new Error(`Failed to load DataStore. Status: ${getRes.status}, Body: ${text}`);
-              }
-
-              // Prevent duplicate entry for the same day
               const today = new Date().toISOString().split("T")[0];
-              if (data.lastDay === today) {
-                console.log("Already updated today. Skipping...");
-                return;
-              }
+              const timestamp = Math.floor(Date.now() / 1000);
 
-              // Add today's price
-              data.prices.push({ date: `${today} 00:00:00`, price });
-              data.lastDay = today;
+              console.log(`Fetched price ${price} for ${today}`);
 
-              // Save back to Roblox DataStore
+              // 2️⃣ Post to Roblox OrderedDataStore
+              const url = `https://apis.roblox.com/datastores/v1/universes/${process.env.UNIVERSE_ID}/standard-datastores/ordered/entries`;
+              const body = {
+                datastoreName: process.env.ORDERED_STORE_NAME,
+                entry: {
+                  value: timestamp,
+                  metadata: {
+                    date: `${today} 00:00:00`,
+                    price: price
+                  }
+                }
+              };
+
               const saveRes = await fetch(url, {
                 method: "POST",
-                headers: { ...headers, "Content-Type": "application/json" },
-                body: JSON.stringify(data)
+                headers: {
+                  "x-api-key": process.env.ROBLOX_API_KEY,
+                  "Content-Type": "application/json"
+                },
+                body: JSON.stringify(body)
               });
 
               if (!saveRes.ok) {
-                const body = await saveRes.text();
-                throw new Error(`Failed to save DataStore. Status: ${saveRes.status}, Body: ${body}`);
+                const text = await saveRes.text();
+                throw new Error(`Failed to save OrderedDataStore. Status: ${saveRes.status}, Body: ${text}`);
               }
 
-              console.log("Price saved successfully:", price);
+              console.log("Price saved successfully!");
             } catch (err) {
               console.error("ERROR:", err);
               process.exit(1);
