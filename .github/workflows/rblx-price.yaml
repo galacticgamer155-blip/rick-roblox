@@ -14,11 +14,11 @@ jobs:
       UNIVERSE_ID: 17397537538
       ORDERED_STORE_NAME: "GlobalRBLXPrices_v2"
     steps:
-      - name: Fetch & save RBLX price
+      - uses: actions/checkout@v3
+
+      - name: Run price update
         run: |
           node << 'EOF'
-          import fetch from "node-fetch";
-
           async function run() {
             try {
               // 1️⃣ Fetch price from Alpha Vantage
